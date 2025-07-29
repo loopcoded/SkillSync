@@ -50,8 +50,6 @@ A comprehensive microservices-based platform that connects developers with proje
                         │   MongoDB    │
                         │ (Database)   │
                         └──────────────┘
-\`\`\`
-
 ## 🛠️ Technology Stack
 
 ### Backend Services
@@ -103,7 +101,6 @@ A comprehensive microservices-based platform that connects developers with proje
 - **Make** (optional, for convenience commands)
 
 ### 1. Clone and Setup
-\`\`\`bash
 # Clone the repository
 git clone https://github.com/your-username/skill-sync-platform.git
 cd skill-sync-platform
@@ -114,19 +111,14 @@ make install-all
 cd services/user-profile-service && npm install && cd ../..
 cd services/project-ideas-service && npm install && cd ../..
 # ... repeat for all services
-\`\`\`
 
 ### 2. Environment Configuration
-\`\`\`bash
 # Copy environment template
 cp .env.example .env
 
 # Edit environment variables
 nano .env
-\`\`\`
 
-Required environment variables:
-\`\`\`env
 # Database
 MONGODB_URI=mongodb://mongodb:27017/skillsync
 
@@ -173,7 +165,6 @@ make test-communication
 
 # View logs
 make logs
-\`\`\`
 
 ### 4. Access the Platform
 - **Frontend**: http://localhost:3000
