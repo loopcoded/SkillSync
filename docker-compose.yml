@@ -1,0 +1,271 @@
+version: '3.8'
+
+services:
+  # Infrastructure Services
+  mongodb:
+    image: mongo:6.0
+    container_name: skillsync-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - skillsync-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: skillsync-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - skillsync-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: skillsync-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - skillsync-network
+
+  # Application Services
+  user-profile-service:
+    build:
+      context: ./services/user-profile-service
+      dockerfile: Dockerfile
+    container_name: skillsync-user-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/skillsync?authSource=admin
+      - RABBITMQ_URL=amqp://admin:password123@rabbitmq:5672
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+    depends_on:
+      - mongodb
+      - rabbitmq
+    networks:
+      - skillsync-network
+
+  project-ideas-service:
+    build:
+      context: ./services/project-ideas-service
+      dockerfile: Dockerfile
+    container_name: skillsync-project-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/skillsync?authSource=admin
+      - RABBITMQ_URL=amqp://admin:password123@rabbitmq:5672
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+    depends_on:
+      - mongodb
+      - rabbitmq
+    networks:
+      - skillsync-network
+
+  matching-service:
+    build:
+      context: ./services/matching-service
+      dockerfile: Dockerfile
+    container_name: skillsync-matching-service
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/skillsync?authSource=admin
+      - RABBITMQ_URL=amqp://admin:password123@rabbitmq:5672
+      - USER_PROFILE_SERVICE_URL=http://user-profile-service:3001
+      - PROJECT_IDEAS_SERVICE_URL=http://project-ideas-service:3002
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+    depends_on:
+      - mongodb
+      - rabbitmq
+      - user-profile-service
+      - project-ideas-service
+    networks:
+      - skillsync-network
+
+  content-ingestion-service:
+    build:
+      context: ./services/content-ingestion-service
+      dockerfile: Dockerfile
+    container_name: skillsync-content-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/skillsync?authSource=admin
+      - RABBITMQ_URL=amqp://admin:password123@rabbitmq:5672
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+    depends_on:
+      - mongodb
+      - rabbitmq
+    networks:
+      - skillsync-network
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: skillsync-notification-service
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      - PORT=3005
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/skillsync?authSource=admin
+      - RABBITMQ_URL=amqp://admin:password123@rabbitmq:5672
+      - REDIS_URL=redis://redis:6379
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=your-email@gmail.com
+      - SMTP_PASS=your-app-password
+      - SMTP_FROM=noreply@skillsync.com
+      - VAPID_PUBLIC_KEY=your-vapid-public-key
+      - VAPID_PRIVATE_KEY=your-vapid-private-key
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+    depends_on:
+      - mongodb
+      - rabbitmq
+      - redis
+    networks:
+      - skillsync-network
+
+  websocket-service:
+    build:
+      context: ./services/websocket-service
+      dockerfile: Dockerfile
+    container_name: skillsync-websocket-service
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    environment:
+      - PORT=3006
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+    depends_on:
+      - redis
+    networks:
+      - skillsync-network
+
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: skillsync-analytics-service
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    environment:
+      - PORT=3007
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/skillsync?authSource=admin
+      - RABBITMQ_URL=amqp://admin:password123@rabbitmq:5672
+      - REDIS_URL=redis://redis:6379
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+    depends_on:
+      - mongodb
+      - rabbitmq
+      - redis
+    networks:
+      - skillsync-network
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: skillsync-api-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - USER_PROFILE_SERVICE_URL=http://user-profile-service:3001
+      - PROJECT_IDEAS_SERVICE_URL=http://project-ideas-service:3002
+      - MATCHING_SERVICE_URL=http://matching-service:3003
+      - CONTENT_INGESTION_SERVICE_URL=http://content-ingestion-service:3004
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3005
+      - WEBSOCKET_SERVICE_URL=http://websocket-service:3006
+      - ANALYTICS_SERVICE_URL=http://analytics-service:3007
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - ALLOWED_ORIGINS=http://localhost:3000
+    depends_on:
+      - user-profile-service
+      - project-ideas-service
+      - matching-service
+      - content-ingestion-service
+      - notification-service
+      - websocket-service
+      - analytics-service
+    networks:
+      - skillsync-network
+
+  # Monitoring Services
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: skillsync-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - skillsync-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: skillsync-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - skillsync-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  skillsync-network:
+    driver: bridge

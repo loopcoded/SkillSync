@@ -1,0 +1,116 @@
+{{- range $serviceName, $config := .Values.services }}
+{{- if $config.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $serviceName }}-service
+  labels:
+    {{- include "skill-sync.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $serviceName }}
+spec:
+  replicas: {{ $config.replicaCount | default $.Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "skill-sync.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $serviceName }}
+  template:
+    metadata:
+      annotations:
+        {{- with $.Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "skill-sync.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $serviceName }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "skill-sync.serviceAccountName" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $serviceName }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ $.Values.image.repository }}/{{ $serviceName }}-service:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $config.port }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "{{ $config.port }}"
+            - name: NODE_ENV
+              value: {{ $.Values.env.NODE_ENV }}
+            - name: MONGODB_URI
+              value: "mongodb://{{ $.Values.mongodb.auth.rootUser }}:{{ $.Values.mongodb.auth.rootPassword }}@mongodb:27017/skillsync_{{ $serviceName }}"
+            {{- if or (eq $serviceName "matching") (eq $serviceName "contentIngestion") (eq $serviceName "notification") (eq $serviceName "websocket") (eq $serviceName "analytics") }}
+            - name: RABBITMQ_URL
+              value: "amqp://{{ $.Values.rabbitmq.auth.username }}:{{ $.Values.rabbitmq.auth.password }}@rabbitmq:5672"
+            {{- end }}
+            {{- if or (eq $serviceName "apiGateway") (eq $serviceName "websocket") (eq $serviceName "analytics") }}
+            - name: REDIS_URL
+              value: "redis://redis:6379"
+            {{- end }}
+            {{- if or (eq $serviceName "apiGateway") (eq $serviceName "websocket") }}
+            - name: JWT_SECRET
+              value: {{ $.Values.env.JWT_SECRET }}
+            {{- end }}
+            {{- if eq $serviceName "notification" }}
+            - name: SMTP_HOST
+              value: {{ $.Values.env.SMTP_HOST }}
+            - name: SMTP_PORT
+              value: {{ $.Values.env.SMTP_PORT }}
+            - name: SMTP_FROM
+              value: {{ $.Values.env.SMTP_FROM }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $serviceName }}-service
+  labels:
+    {{- include "skill-sync.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $serviceName }}
+spec:
+  type: {{ $.Values.service.type }}
+  ports:
+    - port: {{ $config.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "skill-sync.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $serviceName }}
+{{- end }}
+{{- end }}

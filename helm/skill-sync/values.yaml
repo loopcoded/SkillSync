@@ -1,0 +1,205 @@
+# Default values for skill-sync
+replicaCount: 1
+
+image:
+  repository: skill-sync
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 1001
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1001
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+  hosts:
+    - host: skillsync.local
+      paths:
+        - path: /api/users(/|$)(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: user-profile-service
+              port:
+                number: 3001
+        - path: /api/projects(/|$)(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: project-ideas-service
+              port:
+                number: 3002
+        - path: /api/matches(/|$)(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: matching-service
+              port:
+                number: 3003
+        - path: /api/content(/|$)(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: content-ingestion-service
+              port:
+                number: 3004
+        - path: /api/notifications(/|$)(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: notification-service
+              port:
+                number: 3005
+        - path: /ws(/|$)(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: websocket-service
+              port:
+                number: 3006
+        - path: /api/analytics(/|$)(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: analytics-service
+              port:
+                number: 3007
+        - path: /(.*)
+          pathType: Prefix
+          backend:
+            service:
+              name: api-gateway
+              port:
+                number: 8080
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Microservices configuration
+services:
+  userProfile:
+    enabled: true
+    replicaCount: 2
+    port: 3001
+  
+  projectIdeas:
+    enabled: true
+    replicaCount: 2
+    port: 3002
+  
+  matching:
+    enabled: true
+    replicaCount: 1
+    port: 3003
+  
+  contentIngestion:
+    enabled: true
+    replicaCount: 1
+    port: 3004
+  
+  notification:
+    enabled: true
+    replicaCount: 2
+    port: 3005
+  
+  websocket:
+    enabled: true
+    replicaCount: 2
+    port: 3006
+  
+  analytics:
+    enabled: true
+    replicaCount: 1
+    port: 3007
+  
+  apiGateway:
+    enabled: true
+    replicaCount: 2
+    port: 8080
+
+# External dependencies
+mongodb:
+  enabled: true
+  auth:
+    enabled: true
+    rootUser: admin
+    rootPassword: password123
+  persistence:
+    enabled: true
+    size: 8Gi
+
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+
+rabbitmq:
+  enabled: true
+  auth:
+    username: admin
+    password: password123
+  persistence:
+    enabled: true
+    size: 4Gi
+
+# Monitoring
+monitoring:
+  prometheus:
+    enabled: true
+  grafana:
+    enabled: true
+    adminPassword: admin123
+
+# Environment variables
+env:
+  NODE_ENV: production
+  JWT_SECRET: "your-super-secret-jwt-key-change-this-in-production"
+  SMTP_HOST: "smtp.gmail.com"
+  SMTP_PORT: "587"
+  SMTP_FROM: "Skill Sync <noreply@skillsync.com>"

@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  labels:
+    app: notification-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+        tier: backend
+    spec:
+      containers:
+      - name: notification-service
+        image: skill-sync/notification-service:latest
+        ports:
+        - containerPort: 3005
+        env:
+        - name: PORT
+          value: "3005"
+        - name: MONGODB_URI
+          value: "mongodb://mongodb:27017/skillsync_notifications"
+        - name: RABBITMQ_URL
+          value: "amqp://admin:password123@rabbitmq:5672"
+        - name: SMTP_HOST
+          value: "smtp.gmail.com"
+        - name: SMTP_PORT
+          value: "587"
+        - name: SMTP_USER
+          valueFrom:
+            secretKeyRef:
+              name: email-secret
+              key: smtp-user
+        - name: SMTP_PASS
+          valueFrom:
+            secretKeyRef:
+              name: email-secret
+              key: smtp-pass
+        - name: VAPID_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: push-secret
+              key: vapid-public
+        - name: VAPID_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: push-secret
+              key: vapid-private
+        - name: SMTP_FROM
+          value: "Skill Sync <noreply@skillsync.com>"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  labels:
+    app: notification-service
+spec:
+  selector:
+    app: notification-service
+  ports:
+  - port: 3005
+    targetPort: 3005
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: email-secret
+type: Opaque
+stringData:
+  smtp-user: "your-email@gmail.com"
+  smtp-pass: "your-app-password"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: push-secret
+type: Opaque
+stringData:
+  vapid-public: "your-vapid-public-key"
+  vapid-private: "your-vapid-private-key"

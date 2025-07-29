@@ -1,0 +1,31 @@
+apiVersion: v2
+name: skill-sync
+description: A Helm chart for Skill Sync microservices platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - microservices
+  - nodejs
+  - mongodb
+  - redis
+  - rabbitmq
+home: https://github.com/skillsync/platform
+sources:
+  - https://github.com/skillsync/platform
+maintainers:
+  - name: Skill Sync Team
+    email: team@skillsync.com
+dependencies:
+  - name: mongodb
+    version: "13.15.1"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: mongodb.enabled
+  - name: redis
+    version: "17.11.3"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+  - name: rabbitmq
+    version: "12.0.1"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: rabbitmq.enabled

@@ -1,0 +1,123 @@
+name: User Profile Service CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/user-profile-service/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'services/user-profile-service/**'
+
+env:
+  SERVICE_NAME: user-profile-service
+  REGISTRY: ghcr.io
+  IMAGE_NAME: skill-sync/user-profile-service
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: services/user-profile-service/package-lock.json
+
+    - name: Install dependencies
+      working-directory: services/user-profile-service
+      run: npm ci
+
+    - name: Run linting
+      working-directory: services/user-profile-service
+      run: npm run lint
+
+    - name: Run tests
+      working-directory: services/user-profile-service
+      run: npm test
+      env:
+        MONGODB_URI: mongodb://localhost:27017/skillsync_test
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: services/user-profile-service
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Deploy to Kubernetes
+      run: |
+        # Update image tag in deployment
+        sed -i "s|skill-sync/user-profile-service:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|g" k8s/user-profile-service-deployment.yaml
+        
+        # Apply Kubernetes manifests
+        kubectl apply -f k8s/user-profile-service-deployment.yaml
+        
+        # Wait for rollout to complete
+        kubectl rollout status deployment/user-profile-service --timeout=300s
+      env:
+        KUBECONFIG: ${{ secrets.KUBECONFIG }}
